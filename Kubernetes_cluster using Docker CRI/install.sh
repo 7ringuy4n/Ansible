@@ -37,7 +37,6 @@ gnupg \
 lsb-release -y
 
 # Add repo and Install packages
-apt update
 apt install -y curl gnupg2 software-properties-common apt-transport-https ca-certificates
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
 add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
@@ -60,7 +59,7 @@ tee /etc/docker/daemon.json <<EOF
 EOF
 
 # Start and enable Services
-systemctl daemon-reload 
+systemctl daemon-reload
 systemctl restart docker
 systemctl enable docker
 
