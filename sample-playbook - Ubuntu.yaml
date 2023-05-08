@@ -1,0 +1,187 @@
+#For referrence: https://docs.ansible.com/ansible/latest/collections/ansible/builtin/shell_module.html
+---
+- hosts: all
+  become: true
+  vars_files:
+    - vars/default.yml #currentpath/folder/file
+
+  tasks:
+    #install apt package manager
+    - name: Install aptitude
+      apt:
+        name: aptitude
+        state: latest
+        update_cache: true
+
+    #run command without asking sudo password
+    - name: Setup passwordless sudo
+      lineinfile:
+        path: /etc/sudoers
+        state: present
+        regexp: '^%sudo'
+        line: '%sudo ALL=(ALL) NOPASSWD: ALL'
+        validate: '/usr/sbin/visudo -cf %s'
+
+    #ssh-copy-id
+    - name: Set authorized key for remote user
+      ansible.posix.authorized_key:
+        user: "{{ created_username }}"
+        state: present
+        key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+
+    #login ssh for root withous asking password
+    - name: Disable password authentication for root
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        state: present
+        regexp: '^#?PermitRootLogin'
+        line: 'PermitRootLogin prohibit-password'
+
+    #Create user with sudo privileges
+    - name: Create a new regular user with sudo privileges
+      user:
+        name: "{{ created_username }}"
+        state: present
+        groups: sudo
+        append: true
+        create_home: true
+
+    #Run single script
+    - name: Execute the command in remote shell; stdout goes to the specified file on the remote
+      ansible.builtin.shell: somescript.sh >> somelog.txt
+
+    #Change the working directory to somedir/ before executing the command
+    - name: Change the working directory to somedir/ before executing the command
+      ansible.builtin.shell: somescript.sh >> somelog.txt
+      args:
+        chdir: somedir/
+
+    # run command in working directory
+    - name: This command will change the working directory to somedir/
+      ansible.builtin.shell:
+        cmd: ls -l | grep log
+        chdir: somedir/
+
+
+    - name: Run a command that uses non-posix shell-isms (in this example /bin/sh doesn't handle redirection and wildcards together but bash does)
+      ansible.builtin.shell: cat < /tmp/*txt
+      args:
+        executable: /bin/bash
+
+    ## You can use shell to run other executables to perform actions inline
+    - name: Run expect to wait for a successful PXE boot via out-of-band CIMC
+      ansible.builtin.shell: |
+        set timeout 300
+        spawn ssh admin@{{ cimc_host }}
+
+        expect "password:"
+        send "{{ cimc_password }}\n"
+
+        expect "\n{{ cimc_name }}"
+        send "connect host\n"
+
+        expect "pxeboot.n12"
+        send "\n"
+
+        exit 0
+      args:
+        executable: /usr/bin/expect
+        delegate_to: localhost
+
+
+
+    #install apache webserver
+    - name: Install Apache   #title
+      apt: name=apache2 update_cache=yes state=latest
+
+    #Create folder
+    - name: Create document root #title
+      file:
+        path: "/var/www/{{ http_host }}"
+        state: directory
+        owner: "{{ app_user }}" #define in default.yaml
+        mode: '0755'
+
+    #Copy file
+    - name: Copy index test page #title
+      template:
+        src: "files/index.html.j2" #currentpath/folder/file
+        dest: "/var/www/{{ http_host }}/index.html" #define in default.yaml
+
+    #run command and restart service
+    - name: Enable new site #title
+      shell: /usr/sbin/a2ensite {{ http_conf }} #command
+      notify: Reload Apache #restart service
+
+     #Disable default Apache site
+    - name: Disable default Apache site
+      shell: /usr/sbin/a2dissite 000-default.conf
+      when: disable_default
+      notify: Reload Apache
+
+    #Allow http port to firewall
+    - name: "UFW - Allow HTTP on port {{ http_port }}"
+      ufw:
+        rule: allow
+        port: "{{ http_port }}"
+        proto: tcp
+
+    #Allow ssh port to firewall
+    - name: UFW - Allow SSH connections
+      community.general.ufw:
+        rule: allow
+        name: OpenSSH
+
+    #Enable UFW
+    - name: UFW - Enable
+      community.general.ufw:
+        state: enabled
+
+  #Option for run more command
+  handlers:
+    - name: Reload Apache
+      service:
+        name: apache2
+        state: reloaded
+
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted
+
+    - name: Restart apache
+      become: yes
+      become_user: root
+      service: name=httpd state=restarted
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

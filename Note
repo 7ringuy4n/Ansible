@@ -1,0 +1,106 @@
+#Referrence
+https://viblo.asia/p/phan-1-tim-hieu-ve-ansible-4dbZNxv85YM
+https://www.digitalocean.com/community/tutorials/how-to-set-up-ssh-keys-on-ubuntu-20-04
+https://www.bogotobogo.com/DevOps/Ansible/Ansible-SSH-Connection-Setup-Run-Command.php
+https://news.cloud365.vn/10-phut-ansible-co-ban-phan-2-dung-lab-de-thuc-hanh-ansible/
+
+
+*************************************************************************************************************************** Let's go through the Playbook step-by-step
+hosts: all - This tells Ansible to which hosts this Playbook applies. 'All' should work fine because Vagrant uses its own inventory file (more on this later)
+become: yes - We need privileged/sudo access to install the packages.
+tasks: - All the individual tasks after this line will be run on the hosts
+yum: - This is equivalent to running yum install git Ansible will check whether 'git' is installed, and, if not, will install it
+state: - State as 'Present' and 'Installed' are used interchangeably. They both do the same thing i.e. it will ensure that a desired package in your case 'yum/apt' is installed.
+---
+- hosts: all
+  become: yes
+
+  tasks:
+  - name: Install EPEL repo
+    yum:
+      name: epel-release
+      state: present
+
+  - name: Install Ansible
+    yum:
+      name: ansible
+      state: present
+  
+  - name: Install git, nmap and net-tools 
+    yum:
+      state: present
+      name:
+        - git
+        - nmap
+        - net-tools
+
+
+
+*************************************************************************************************************************** Setup SSH keypair
+#change hostname
+sudo nano /etc/hostname
+sudo nano /etc/hosts
+
+#Setting up an SSH Key pair for Server
+ssh-keygen #for both user and root
+
+#then copy to node
+ssh-copy-id username@nodeip #for both user and root
+ssh-copy-id tringuyen@192.168.88.129
+
+#test connection - remote to node
+ssh tringuyen@192.168.88.129
+
+#Disable password authentication
+sudo nano /etc/ssh/sshd_config
+*
+PasswordAuthentication no 
+ChallengeResponseAuthentication no
+UsePAM no
+
+*************************************************************************************************************************** Installing Ansible
+sudo apt-add-repository --yes ppa:ansible/ansible && sudo apt update && sudo apt install -y ansible
+
+sudo apt install -y ansible
+*
+sudo nano /etc/ansible/hosts
+[Nodes]
+Node01 ansible_host=192.168.9.57 ansible_port=22 ansible_user=tringuyen
+Node02 ansible_host=172.16.5.214 ansible_port=22 ansible_user=root
+192.168.9.59
+192.168.9.59 ansible_ssh_pass=123 ansible_ssh_user=tringuyen #less secure
+Node-hostname ansible_host=192.168.80.125 ansible_port=22 ansible_user=root
+
+#Under the default sections
+nano /etc/ansible/ansible.cfg
+*
+inventory = /etc/ansible/hosts
+remote_user = tringuyen
+host_key_checking = False
+*
+#Option --- Under the privilege_escalation section
+become=True
+become_method=sudo
+become_user=root
+become_ask_pass=False
+*
+
+
+#Listing inventory
+ansible-inventory --list -y
+
+#Testing connection
+ansible all -m ping
+ansible all -m ping -u <username> --ask-pass #use if not define in /etc/ansible/hosts
+
+#Ansible CLI
+ansible <groupname> -a "/sbin/reboot" -u <username> --become --ask-become-pass #run command by root
+ansible Nodes -m command -a "service ssh status" --become --ask-become-pass
+ansible <groupname> -a "/sbin/reboot" #reboot all in group Nodes
+ansible 172.16.5.249 -m command -a "uptime" #send command to single host
+ansible Nodes -m command -a "uptime"
+ansible Nodes -m command -a "ip ad"
+ansible Nodes -m command -a "service apache2 status"
+
+ansible-playbook playbook.yml -l server1 -u root -k #start setup playbook.yml to nodes
+ansible-playbook Setup.yml -l Nodes --become --ask-become-pass
