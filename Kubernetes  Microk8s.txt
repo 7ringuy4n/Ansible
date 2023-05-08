@@ -1,0 +1,96 @@
+#For referrence
+https://viblo.asia/p/bai-3-cai-dat-kubernetes-voi-microk8s-126-tren-ubuntu-2204-zOQJwYBkVMP
+
+*************************************************************************************************************************** Setup to all VM
+nano  /etc/hostname
+#master
+192.168.56.2  microk8s-master-01
+192.168.56.3  microk8s-master-02
+192.168.56.4  microk8s-master-03
+
+#worker
+192.168.56.5  microk8s-worker-1
+192.168.56.6  microk8s-worker-2
+192.168.56.7  microk8s-worker-3
+192.168.56.8  microk8s-worker-4
+
+#Setup for current user
+sudo usermod -a -G microk8s $USER
+sudo chown -f -R $USER ~/.kube
+su - $USER
+
+#Setup firewall
+sudo ufw allow 16443/tcp 
+sudo ufw allow 10250/tcp 
+sudo ufw allow 10255/tcp 
+sudo ufw allow 25000/tcp 
+sudo ufw allow 12379/tcp 
+sudo ufw allow 10257/tcp 
+sudo ufw allow 10259/tcp 
+sudo ufw allow 19001/tcp 
+sudo ufw allow 4789/udp
+
+ sudo ufw allow 10248/tcp 
+sudo ufw allow 10249/tcp 
+sudo ufw allow 10251/tcp 
+sudo ufw allow 10252/tcp 
+sudo ufw allow 2380/tcp 
+sudo ufw allow 1338/tcp 
+
+#Install microk8s
+apt get install -y snap
+snap install microk8s --classic --channel=1.26
+microk8s status --wait-ready
+microk8s enable registry istio
+microk8s enable --help
+
+#create token add-node on microk8s-master-01 :
+microk8s add-node --token-ttl 3600
+
+#Join other master nodes
+microk8s join 192.168.56.2:25000/e523c2d3aef2e3679c3e5ccf605d97c2/dbc9df54be3b
+
+#Join worker nodes
+microk8s join 192.168.56.2:25000/e523c2d3aef2e3679c3e5ccf605d97c2/dbc9df54be3b --worker
+
+#check nodes
+microk8s kubectl get no
+
+#Enable addon
+microk8s enable dns dashboard hostpath-storage ingress rbac
+
+#activate dashboard
+microk8s dashboard-proxy 
+https://172.16.3.174:10443/
+
+#Use the following token to login:
+eyJhbGciOiJSUzI1NiIsImtpZCI6Ik9jbVYxaEs1RFd0cjFnVGU2X21lZVotZU1UcWlVdVE3ekpMSVZoQW5WdTQifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJrdWJlLXN5c3RlbSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VjcmV0Lm5hbWUiOiJtaWNyb2s4cy1kYXNoYm9hcmQtdG9rZW4iLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC5uYW1lIjoiZGVmYXVsdCIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6ImMxM2FjMjc3LThjMDgtNDMwYi1hNmQ0LWM2NWZhOGQ0ZjJiMiIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDprdWJlLXN5c3RlbTpkZWZhdWx0In0.DHp-S5KnM5FVKvXP6heMLH0scLgPU-PTcljCA1kkchxlAP_tixYD1p9ey6X3qAY2syXjPp1hY8ctTDy-O4ptbeJdxjQe_gmfUZ7KH8-_9YxJXH_xHSBHZG8RP-k37xqcZ9Cvf3Hr91M-voFnTr_QOPTW9pMfdKJvugP2YIcGUJtrV-_ZLevGTwB51LNgSHiX36L0wk01EI5vmO-TkhyqGEcg9-2k5JbgyVu_w6_1t26SAhGYzMI2xcIaBpBFh5k1T00d0l9kZp3QqFf2-UnSoslawec2kdY5YzuDEz6U0WSNP8XCn_46RItCdnPxSI1DoLokLyIBHqngrlZTr350FA
+
+#to forward port to avoid conflicting
+microk8s kubectl port-forward -n kube-system service/kubernetes-dashboard 10443:443 --address 172.16.3.174
+
+#Deploying Hello World to Your Cluster
+microk8s kubectl create deployment hello-world --image=tutum/hello-world:latest
+microk8s kubectl expose deployment hello-world --type=NodePort --port=80 --name=hello-world-service
+microk8s kubectl port-forward -n default service/hello-world-service 8080:80
+
+*************************************************************************************************************************** option
+token=$(microk8s kubectl -n kube-system get secret | grep default-token | cut -d " " -f1)
+microk8s kubectl -n kube-system describe secret $token
+
+#Managing MicroK8s Clusters
+By default, MicroK8s creates a single-node cluster when it starts. But you can easily add Kubernetes nodes to an existing cluster with:
+microk8s add-node
+
+To remove a node, first log into it and run:
+microk8s leave
+
+This will remove workloads from the node. Once the removal is complete, remove the node entirely from your cluster with:
+microk8s remove-node 192.168.1.10
+
+#High Availability Clusters
+One of the coolest features in MicroK8s is that it automatically supports high availability as long as you give it a cluster that consists of at least three nodes. When you do, it  automatically replicates the cluster’s data store across each node. That way, you are not dependent on a single master node to keep your cluster running.
+
+To enable high availability, then, all you need to do is create a cluster with at least three nodes total using the add-node command (see above for more on this). You can then verify that MicroK8s is running high availability mode with the command:
+microk8s status
+
