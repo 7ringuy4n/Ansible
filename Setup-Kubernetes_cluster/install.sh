@@ -107,5 +107,5 @@ kubectl apply -f calico.yaml
 kubectl apply -f https://raw.githubusercontent.com/techiescamp/kubeadm-scripts/main/manifests/metrics-server.yaml
 sleep 120
 kubectl label node node01 node-role.kubernetes.io/worker=worker
-kubectl apply -f .\script\testwebserver.yml
+kubectl apply -f ./script/testwebserver.yml
 kubectl get nodes -o wide
