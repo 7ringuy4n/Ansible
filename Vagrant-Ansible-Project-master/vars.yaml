@@ -1,4 +1,0 @@
-#Define the Variables for Playbook this is vars.yml
-
-domain: "middlewareinventory.com"
-docroot: "/shared"
