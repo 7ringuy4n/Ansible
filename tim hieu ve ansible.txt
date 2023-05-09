@@ -1,0 +1,573 @@
+Tìm hiểu về Ansible.
+(update: 2022)
+
+Ansible là gì:
+
+Việc cài đặt và cấu hình các máy chủ thường được ghi chép lại trong tài liệu dưới dạng các câu lệnh đã chạy, với giải thích kèm theo. Cách thức này gây mệt mỏi cho quản trị viên vì phải làm theo từng bước ở mỗi máy khi thiết lập mới, và có thể dẫn đến sai lầm, thiếu sót. (trích: bachkhoa-aptech)
+
+Ansible giúp cấu hình "nhiều" server theo tùy biến rất đa dạng, giảm thiểu thời gian thao tác trên từng server được cài đặt
+
+
+
+Step 1.Cài đặt ansible:
+
+# Cài đặt trên Ubuntu
+apt-add-repository -y ppa:ansible/ansible
+apt-get update
+apt-get install -y ansible
+
+# Cài đặt trên centos
+yum install epel-release
+yum install ansible
+
+
+2: Inventory Host - Bước đi đầu tiên
+
+Đầu tiên cần khai báo host_group để dễ gọi các khối server. Ví dụ ta muốn cài apache2/nginx lên server API, cài mysql lên server db, cài java + deploy process lên khối Job/backend... Ở đây cần quy hoạch từng khối để dễ gọi lệnh ansible về sau.
+
+ vim /etc/ansible/hosts
+[local]
+127.0.0.1
+
+[apiserver]
+192.168.88.13
+192.168.88.14
+
+[jobserver]
+192.168.89.100
+192.168.89.101
+
+[dbservers]
+192.168.90.200
+192.168.90.201
+
+[group_server1:childrens]
+apiserver
+jobserver
+
+Cấu trúc lệnh gọi ansible sẽ như sau:
+
+# ansible -i /etc/ansible/hosts [tên host_group] -m [tên module] -a [tham số truyền vào module]
+
+Lệnh thứ 1. Basic nhất có thể: ( -m là loại module, -k là nhập password, , -u là user, -i là đường dẫn inventory host_group)
+
+Tình huống: Tôi muốn ping đến host API xem có thể kết nối để cài đặt hay không
+$$ ansible apiserver -m ping -u tuanda -k
+SSH password: (nhập pass của host api)
+192.168.88.13 | SUCCESS => {
+    "changed": false,
+    "ping": "pong"
+}
+Nếu chạy lỗi như sau: "**bash: /usr/bin/python: No such file or directory"** thì bạn cần phải cài python trên client. Ngoài ra nên cài thêm python3
+Nểu chạy lỗi Host Key checking is enabled and sshpass does not support this, ta ssh tuanda@192.168.88.13 để lưu known_hosts
+
+Cả 2 bước trên chỉ là demo cơ bản. Các option -k -K -s nhớ rất mất thời gian. Vì vậy ta sẽ đặt "ssh-key" để quản lý Ansible tập trung và các client. Ta có thể đặt trong file /etc/ansible/hosts (về sau nên sử dụng sshkey, sẽ rất thuận tiện)
+ Bước 1: Tạo ssh-key
+# su - tuanda 
+# ssh-keygen -t rsa (ấn Enter nhiều lần)
+# ssh-copy-id tuanda@192.168.88.13 (thực hiện trên tất cả các client mà bạn muốn join vào ansible)
+# ssh-copy-id tuanda@192.168.88.14
+....
+ 
+Chạy lệnh:
+# su - tuanda 
+# ansible apiserver -m shell -a "whoami"
+192.168.88.13 | CHANGED | rc=0 >>
+tuanda
+192.168.88.14 | CHANGED | rc=0 >>
+tuanda
+
+Một số câu lệnh cơ bản.
+
+*# ansible [tên host cần gọi] -m [tên module] -a [tham số truyền vào module]*
+-i : inventory host. Trỏ thư viện group_host cần gọi, mặc định nếu không có -i thì sẽ gọi /etc/ansible/hosts
+-m : gọi module của ansible
+-a : command_argument gửi kèm theo module mà ta đang gọi
+-u : user
+-vvvv : debug option
+
+$$ ansible apiserver -m ping (giải thích: gọi ping toàn bộ các hosts trong /etc/ansible/hosts)
+$$ ansible apiserver -m command -a uptime
+$$ ansible apiserver -a uptime (Default, ansible sẽ cho module = "command")
+$$ ansible apiserver -m shell -a 'top -bcn1 | head' (giải thích: chạy lệnh shell ở remote client![](https://images.viblo.asia/8335ed0c-7cfe-41b6-b7cf-bd37e05979a7.png)
+)
+- restart mysql
+$$ ansible dbserver -m service -a "name=mysql state=restarted"
+
+Tất cả module của ansible bạn có thể tham khảo ở đây http://docs.ansible.com/ansible/list_of_all_modules.html . Được chia các module chính như: db, file, monitor, network, package, storage, web, cloud....
+
+Phần 2: Ansible playbook
+Chúng ta ko rảnh để gõ lại từng lệnh phía trên phải không. Ta sẽ cần viết ra các file playbook và lưu lại. Playbook đơn giản có mẫu như sau (check ping và cài đặt apache2 trên ubuntu client)
+
+---
+- hosts: local
+  tasks: 
+    - name: Ping check host
+      ping: ~
+    - name: Install Apache2
+      apt: name=apache2 update_cache=yes
+
+Với CentOS, ta chỉ cần đổi apt thành yum. Bài toán nâng cao hơn 1 chút là cài Apache2 + deploy đơn giản .config file , deploy .html file. Ở phần sau tôi sẽ hướng dẫn các bạn config cho ansible tự detect OS và chọn apt/yum riêng.
+- hosts: servertest 
+  become: true
+  tasks:
+  ########## Cài đặt gói tin httpd và start .
+  - name: Install HTTP
+    yum: name=httpd state=latest
+  - name: Start HTTPD after install
+    service: name=httpd state=started
+########### Deploy config
+#backup
+  - name: Backup config HTTP (backup from client)
+    command: cp /etc/httpd/conf/httpd.conf /etc/httpd/conf/httpd.conf.backup1
+#Deploy
+  - name: Deploy config httpd
+    template:
+     src: "httpd.conf"
+     dest: "/etc/httpd/conf/httpd.conf"
+     owner: root
+     group: root
+     mode: 0644
+########### Đẩy code về client
+  - name: Deploy web file
+    template:
+     src: "index.html"
+     dest: "/var/www/html/index.html"
+
+########### Khởi động lại apache để áp dụng config
+  - name: Start HTTPD after install
+    service: name=httpd state=restarted
+
+Dưới task sẽ là các module để chạy. Module yum : để install gói tin http. Module service: để chạy lệnh "service httpd start". Module command: để chạy lệnh trên client. Modudle Template: là copy file từ ansible server tới client. Ngoài ra còn gán biến cho các file được copy.
+
+Ta sẽ được kết quả như sau:
+
+root@ubuntu:/etc/ansible/playbook-test# ansible-playbook -i /etc/ansible/hosts apache.yaml
+
+PLAY ***************************************************************************
+
+TASK [setup] *******************************************************************
+changed: [192.168.88.2]
+
+TASK [Install HTTP] ************************************************************
+changed: [192.168.88.2]
+
+TASK [Start HTTPD after install] ***********************************************
+changed: [192.168.88.2]
+
+TASK [Backup config HTTP (backup from client)] *********************************
+changed: [192.168.88.2]
+
+TASK [Deploy new config] *******************************************************
+changed: [192.168.88.2]
+
+TASK [Deploy web file] *********************************************************
+changed: [192.168.88.2]
+
+PLAY RECAP *********************************************************************
+192.168.88.2            : ok=6    changed=3    unreachable=0    failed=0
+
+
+A. Loop Item
+Phần trước, thay vì viết module apt cho từng gói cài đặt. Giờ ta sẽ nhóm vào Item để chạy 1 lần luôn.
+
+cat /etc/ansible/hosts
+[allone]
+192.168.88.88
+
+### VD cho Ubuntu###
+---
+- hosts: allone
+  become: yes
+
+  tasks:
+    - name: Install Apache.
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - apache2
+        - mysql-server
+        - php
+        - php-mysql
+    - name: Restart Apache and Mysql
+      service:
+        name: "{{item}}"
+        state:  running
+      loop:
+          - apache2
+          - mysql
+
+
+### VD cho Centos7###
+--
+- hosts: allone
+  become: yes
+
+  tasks:
+    - name: Install Apache.
+      yum:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - nginx
+        - redis
+    - name: Restart Apache and Mysql
+      service:
+        name: "{{item}}"
+        state:  restarted
+      loop:
+          - nginx
+          - redis
+
+
+
+
+B. Handlers
+Handlers giúp chúng ta gọi lại hành động thực thi nhiều lần (notify) mà không cần phải viết lại.
+
+---
+- hosts: allone
+  become: yes
+
+tasks:
+    - name: Install Apache.
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - apache2
+        - mysql-server
+        - php
+        - php-mysql
+
+    - name: deploy html file
+      template:
+        src: /tmp/index.html
+        dest: /var/www/html/index.html
+      notify: restart web
+
+  handlers:
+    - name: restart web
+      service:
+        name: "{{ item }}"
+        state:  running
+      loop:
+          - apache2
+          - mysql
+
+
+### Ví dụ handlers cho Centos
+---
+- hosts: allone
+  become: yes
+
+  tasks:
+    - name: Install Apache.
+      yum:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - nginx
+        - redis
+      notify: restart service
+
+  handlers:
+    - name: restart service
+      service:
+        name: "{{ item }}"
+        state:  restarted
+      loop:
+        - nginx
+        - redis
+
+
+Nếu handlers không chạy (do file không có sự thay đổi), bạn hãy thử sửa file /tmp/index.html và chạy lại. Ansible nhận ra sự thay đổi của file index nên sẽ thực thi Handlers.
+
+C.Variables và Template
+Đặt giá trị cho biến cố định
+
+---
+- hosts: allone
+  become: yes
+
+  vars:
+     - domain_name: "tuanduong.com"
+     - index_file: "index.html"
+     - config_file: "tuanduong.conf"
+
+  tasks:
+    - name: Install Apache.
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - apache2
+        - mysql-server
+        - php
+        - php-mysql
+
+    - name: deploy html file
+      template:
+        src: /tmp/{{ index_file }}
+        dest: /var/www/html/index.html
+      notify: restart web
+
+  handlers:
+    - name: restart web
+      service:
+        name: "{{ item }}"
+        state:  running
+      loop:
+          - apache2
+          - mysql
+
+Sử lại file index.html ở trên server ansible.
+
+vim /tmp/index.html
+
+This is <BR>
+FILE_NAME: {{ index_file }} <BR>
+DOMAIN NAME: {{ domain_name }} <BR>
+
+
+
+Ta có kết quả như sau
+
+
+
+kết quả cho ta biết là Variable có thể ăn đến tận file được deploy nhờ Template.
+
+D.Fact và when
+Ở phần 1 tôi đã hứa với các bạn là hướng dẫn ansible tự detect được OS và lựa chọn cài yum/apt. Ở đây ta sẽ dùng Fact để lấy thông tin và dùng when để thiết lập varriable. Ta có nhìn qua thông tin của Fact client bằng lệnh sau
+
+#ansible 192.168.1.59 -m setup
+
+---
+- hosts: allone
+  become: yes
+
+  tasks:
+    - name: Define Red Hat.
+      set_fact:
+         package_name: "httpd"
+      when:
+         ansible_os_family == "Red Hat"
+
+    - name: Define Debian.
+      set_fact:
+         package_name: "apache2"
+      when:
+         ansible_os_family == "Debian"
+
+    - name: Stop apache
+      service:
+        name: "{{ package_name }}"
+        state: stopped
+
+
+
+
+Phần 3: Phần tiếp theo, Long sẽ hướng dẫn các bạn sử dụng Role, Ansible galaxy. https://viblo.asia/p/tim-hieu-ansible-phan-3-yMnKMN0aZ7P
+
+Cảm ơn Mai Gia Long (cùng team group) tiếp tục phần 3 của bộ Ansible.
+
+Nếu có lỗi trong bài viết, mong các bạn comment góp ý. Cảm ơn.
+
+
+A.Ansible-Roles
+Các tác vụ liên quan đến nhau có thể được tập hợp lại thành role, sau đó áp dụng cho một nhóm các máy khi cần thiết.
+
+- Role Directory Structure
+Không nhất thiết phải sử dụng tất cả các thư mục ở trên khi tạo một role.
+
+Task: Chứa các file yaml định nghĩa các nhiệm vụ chính khi triển khai.
+Handles: Chứa các handler được sử dụng trong role
+Files: chứa các file dc sử dụng bởi role, ví dụ như các file ảnh.
+Templates: chứa các template file được sử dụng trong role, ví dụ như các file configuration... Các file này có đuôi *.j2, sử dụng jinja2 syntax
+Vars: định nghĩa các variable được sử dụng ở trong roles
+Defaults: Định nghĩa các giá trị default của các variable được sử dụng trong roles. Nếu variable không được định nghiã trong thư mục vars, các giá trị default này sẽ được gọi.
+Meta: thư mục này chứa meta data của roles
+Bạn có thể làm quen với cấu trúc thư mục role bằng cách sử dụng command sau:
+ansible-galaxy init __template__
+
+
+Chú ý bên trong thư mục phải tuân thủ việc khai báo tên file , tên folder cho role
+
+roles/x/tasks/main.yml
+roles/x/handlers/main.yml
+roles/x/vars/main.yml
+roles/x/defaults/main.yml
+roles/x/meta/main.yml
+- Role search path
+Bạn phải khai báo việc set role chính xác trong ansible.cfg để ansible có thể hiểu được bạn viết role và thực thi nó.
+
+
+
+-Using Roles
+Bạn có thể sử dụng role theo cách sau .
+
+             ---
+             - hosts: dev
+               roles:
+                 - nginx
+
+Ngoài ra có thể tham khảo thêm tại đây
+
+- Demo
+Sau đây tôi sẽ hướng dẫn các bạn viết role đơn giản cài đặt nginx cho ubuntu16.0.4 (bạn nào chưa tìm hiểu về ansible có thể quay lại phần 1 , phần 2 )
+Cấu trúc thư mục :
+
+
+Trong /roles/nginx/tasks/main.yml
+
+- name: NGINX --> Install the nginx packages for Ubuntu target
+  become: yes
+  apt: 
+    name: "nginx"
+    update-cache: yes
+
+  
+- name: Check nginx status
+  shell: bash -lc "systemctl status nginx"
+  register: nginx_status
+- debug: 
+    var: nginx_status.stdout_lines
+
+- name: NGINX --> Copy extra/sites configuration files
+  become: yes
+  template:
+    src: nginx.conf.j2
+    dest: "{{ nginx_conf_dir }}/nginx.conf"
+
+Trong /roles/nginx/templates/nginx.conf.j2
+
+user www-data;
+worker_processes auto ;
+
+error_log  {{ nginx_log_dir }}/error.log {{ nginx_error_log_level }};
+pid        {{ nginx_pid_file }};
+
+worker_rlimit_nofile {{ nginx_worker_rlimit_nofile }};
+
+events {
+    worker_connections {{ nginx_worker_connections }};
+}
+
+http {
+	default_type  application/octet-stream;
+	access_log  {{ nginx_log_dir }}/access.log;
+	keepalive_timeout {{ keepalive_timeout }};
+	send_timeout {{ send_timeout }};
+	client_body_timeout {{ client_body_timeout }};
+	client_header_timeout {{ client_header_timeout }};
+	proxy_send_timeout {{ proxy_send_timeout }};
+	proxy_read_timeout {{ proxy_read_timeout }};
+
+	gzip {{ nginx_gzip }};
+	gzip_types  text/css text/javascript application/javascript;
+
+	include /etc/nginx/mime.types;
+	include /etc/nginx/conf.d/*.conf;
+	include /etc/nginx/sites-enabled/*;
+}
+
+Trong vars/front.yml
+
+nginx_conf_dir: "/etc/nginx"
+nginx_server_name: "localhost"
+nginx_service_name: "nginx"
+nginx_user: "nginx"
+nginx_group: "nginx"
+nginx_pid_file: "/var/run/nginx.pid"
+nginx_worker_connections: 1024
+nginx_worker_rlimit_nofile: 1024
+nginx_log_dir: "/var/log/nginx"
+nginx_error_log_level: "error"
+nginx_gzip: "on"
+nginx_start_service: true
+nginx_start_at_boot: true
+keepalive_timeout: 600
+send_timeout: 600
+client_body_timeout: 600
+client_header_timeout: 600
+proxy_send_timeout: 600
+proxy_read_timeout: 600
+
+Trong main-playbook.yml
+
+- hosts: dev
+  user: "{{ ansible_ssh_user }}"
+  become_method: sudo
+  gather_facts: True
+  vars_files:
+  - vars/front.yml
+  roles:
+  - nginx
+
+Trong ansible.cf
+
+[defaults]
+roles_path = ../roles
+
+Command Thực thi : ansible-playbook -i inventory/hosts main-playbook.yml --extra-vars " ansible_ssh_user=ubuntu"
+
+Kết quả :
+Trên console terminal:
+
+
+web:
+
+
+
+Như vậy chúng ta sẽ bóc các tác vụ có điểm chung trong playbook.yml để chuyển chúng về thành 1 role là cài đặt và cấu hình nginx để chúng ta thuận tiện trong quá trình viết nhiều task.
+
+B.Ansible galaxy
+Ansible Galaxy là một trang web miễn phí để tìm kiếm, tải xuống, xếp hạng và xem xét tất cả các tính chất được cộng đồng Ansible phát triển Tôi sẽ giới thiệu một số command để bạn có thể tải xuống , tạo mới hay quản lý roles/
+
+- Install Role
+Bạn dùng command ansible-galaxy để download role từ Galaxy :
+ansible-galaxy install geerlingguy.nginx
+
+kết quả :
+
+downloading role 'nginx', owned by geerlingguy
+downloading role from https://github.com/geerlingguy/ansible-role-nginx/archive/2.7.0.tar.gz
+extracting geerlingguy.nginx to /home/mai.thanh.long/Desktop/roles/geerlingguy.nginx
+geerlingguy.nginx (2.7.0) was installed successfully
+Để xem danh sách các role được install thì bạn dùng :
+ansible-galaxy list
+
+- Create Role
+Như hướng dẫn ở trên phần Role thì bạn có thể dùng command này :
+ansible-galaxy init __template__
+
+- Search for Roles
+Để tìm kiếm 1 role thì bạn có thể sử dụng command sau :
+ansible-galaxy search apache --author geerlingguy
+
+Kết quả:
+
+Found 14 roles matching your search:
+
+Name Description
+
+geerlingguy.adminer---- Installs Adminer for Database management.
+geerlingguy.apache---- Apache 2.x for Linux.
+geerlingguy.apache-php-fpm---- Apache 2.4+ PHP-FPM support for Linux.
+geerlingguy.certbot---- Installs and configures Certbot (for Let's Encrypt).
+geerlingguy.drupal---- Deploy or install Drupal on your servers.
+geerlingguy.htpasswd---- htpasswd installation and helper role for Linux servers.
+geerlingguy.munin---- Munin monitoring server for RedHat/CentOS or Debian/Ubuntu.
+geerlingguy.php---- PHP for RedHat/CentOS/Fedora/Debian/Ubuntu.
+geerlingguy.pimpmylog---- Pimp my Log installation for Linux
+geerlingguy.solr---- Apache Solr for Linux.
+geerlingguy.supervisor---- Supervisor (process state manager) for Linux.
+geerlingguy.svn---- SVN web server for Linux
+geerlingguy.tomcat6---- Tomcat 6 for RHEL/CentOS and Debian/Ubuntu.
+geerlingguy.varnish ---- Varnish for Linux.
+
+- Remove an installed role
+Để remove đã được install trước đó thì ta dùng: ansible-galaxy remove username.role_name
+
+Như vậy, tôi đã giới thiệu cơ bản về Ansible-Role và Ansible-Galaxy để các bạn có thể nghiên cứu thêm về nó.
