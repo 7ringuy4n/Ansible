@@ -29,8 +29,7 @@ sudo ufw allow 10257/tcp
 sudo ufw allow 10259/tcp 
 sudo ufw allow 19001/tcp 
 sudo ufw allow 4789/udp
-
- sudo ufw allow 10248/tcp 
+sudo ufw allow 10248/tcp 
 sudo ufw allow 10249/tcp 
 sudo ufw allow 10251/tcp 
 sudo ufw allow 10252/tcp 

@@ -44,12 +44,17 @@ sudo nano /etc/hosts
 #Setting up an SSH Key pair for Server
 ssh-keygen #for both user and root
 
+#Note for EC2 instance: Change UsePAM yes to UsePAM no and PasswordAuthentication no to PasswordAuthentication yes.
+sudo nano /etc/ssh/sshd_config
+PasswordAuthentication yes
+UsePAM no
+
 #then copy to node
 ssh-copy-id username@nodeip #for both user and root
-ssh-copy-id tringuyen@172.16.3.175
+ssh-copy-id tringuyen@172.16.3.109
 
 #test connection - remote to node
-ssh tringuyen@172.16.3.175
+ssh tringuyen@172.16.3.109
 
 #Disable password authentication
 sudo nano /etc/ssh/sshd_config
