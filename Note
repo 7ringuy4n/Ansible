@@ -97,6 +97,7 @@ ansible-inventory --list -y
 #Testing connection
 ansible all -m ping
 ansible all -m ping -u <username> --ask-pass #use if not define in /etc/ansible/hosts
+ansible all -m ping -u Ubuntu --ask-pass
 
 #Ansible CLI
 ansible <groupname> -a "/sbin/reboot" -u <username> --become --ask-become-pass #run command by root

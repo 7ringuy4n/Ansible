@@ -8,7 +8,7 @@ Node01="54.169.201.4"
 
 cat <<EOF | tee /etc/ansible/hosts
 [Nodes]
-Node01 ansible_host=$Node01 ansible_port=22 ansible_user=$user
+Node01 ansible_host=$Node01 ansible_port=22 ansible_user=$Nodeuser
 EOF
 
 cat <<EOF | tee /etc/modules-load.d/modules.conf
