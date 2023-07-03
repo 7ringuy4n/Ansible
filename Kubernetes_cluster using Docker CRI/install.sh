@@ -1,3 +1,4 @@
+#!/bin/bash
 hostname=$(hostname -s)
 controlip=$(hostname -I)
 pod_cidr="192.168.0.0/16"
